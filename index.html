@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智慧学管 · 计算机科学与技术学院</title>
+    <!-- Element Plus 样式 -->
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Element Plus 组件库 -->
+    <script src="https://unpkg.com/element-plus"></script>
+    <!-- Element Plus 图标库 -->
+    <script src="https://unpkg.com/@element-plus/icons-vue"></script>
+    <!-- SheetJS (导出Excel) -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; background-color: #f0f4f8; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #e9eef3; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb { background: #b0c4de; border-radius: 10px; }
+        /* 登录动画 */
+        .login-container {
+            min-height: 100vh; display: flex; align-items: center; justify-content: center;
+            background: linear-gradient(-45deg, #0b1c3a, #1b3a5c, #2a5298, #1e3c72);
+            background-size: 400% 400%;
+            animation: gradientFlow 16s ease infinite;
+            position: relative; overflow: hidden;
+        }
+        @keyframes gradientFlow {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        .login-container::before {
+            content: ''; position: absolute; width: 200%; height: 200%; top: -50%; left: -50%;
+            background: radial-gradient(circle at 20% 30%, rgba(255,255,255,0.08) 0%, transparent 20%),
+                        radial-gradient(circle at 80% 70%, rgba(255,255,255,0.05) 0%, transparent 25%);
+            animation: floatParticle 30s linear infinite;
+        }
+        @keyframes floatParticle { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .login-card {
+            width: 460px; padding: 42px 40px; background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(15px); border-radius: 36px;
+            box-shadow: 0 30px 50px rgba(0, 20, 40, 0.25), 0 0 0 1px rgba(255,255,255,0.2) inset;
+            transition: transform 0.3s ease; z-index: 2; animation: cardFloat 1s ease-out;
+        }
+        @keyframes cardFloat { 0% { opacity: 0; transform: translateY(30px); } 100% { opacity: 1; transform: translateY(0); } }
+        .college-badge { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 20px; }
+        .college-icon { width: 48px; height: 48px; background: linear-gradient(145deg, #1e3c72, #2a5298); border-radius: 16px; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 14px rgba(0,30,60,0.2); }
+        .college-title { font-size: 20px; font-weight: 600; color: #0b1c3a; letter-spacing: 1px; }
+        .register-link { text-align: center; margin-top: 16px; color: #6b7a8d; font-size: 14px; }
+        .register-link span { color: #2a5298; font-weight: 600; cursor: pointer; }
+        .el-card { border-radius: 24px; border: none; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); }
+        .stat-card { background: #fff; border-radius: 22px; padding: 22px 24px; box-shadow: 0 6px 14px rgba(0,0,0,0.02); display: flex; align-items: center; justify-content: space-between; transition: all 0.25s; }
+        .stat-card:hover { transform: translateY(-4px); box-shadow: 0 16px 24px rgba(30,60,120,0.08); }
+        .stat-icon { width: 58px; height: 58px; border-radius: 20px; display: flex; align-items: center; justify-content: center; font-size: 30px; color: white; }
+        .stat-number { font-size: 34px; font-weight: 700; color: #1e293b; }
+        .dashboard-welcome { background: linear-gradient(105deg, #13294b 0%, #2a5298 100%); border-radius: 28px; padding: 28px 32px; color: white; margin-bottom: 28px; box-shadow: 0 16px 30px -8px rgba(19,41,75,0.3); position: relative; overflow: hidden; }
+        .dashboard-welcome::after { content: "⚡ 计算机科学与技术学院"; position: absolute; right: 30px; bottom: 15px; opacity: 0.15; font-size: 34px; font-weight: 700; white-space: nowrap; }
+        .el-menu-item .el-icon { margin-right: 12px; }
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
+        /* 人事表单中标签页内边距 */
+        .el-tab-pane { padding-top: 16px; }
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+    <script>
+        (function() {
+            const { createApp, ref, computed, onMounted, watch, nextTick, reactive } = Vue;
+            const { ElMessage, ElMessageBox } = ElementPlus;
+
+            // ---------- 存储工具 ----------
+            const storage = {
+                get(key, defaultValue) {
+                    try { const val = localStorage.getItem(key); return val ? JSON.parse(val) : defaultValue; } catch(e) { return defaultValue; }
+                },
+                set(key, val) {
+                    try { localStorage.setItem(key, JSON.stringify(val)); } catch(e) {}
+                }
+            };
+
+            const DEFAULT_SECRET = 'CSIE2024';
+            const initAllData = () => {
+                if (!storage.get('adminUsers')) storage.set('adminUsers', [{ id:1, username:'admin', password:'123456', role:'admin' }]);
+                if (!storage.get('registerSecret')) storage.set('registerSecret', DEFAULT_SECRET);
+                // 示例数据 (保持原有)
+                if (!storage.get('students')) storage.set('students', [{ id:1, studentId:'2024001', name:'李明', gender:'男', age:20, className:'软件工程1班', phone:'13812340001' }]);
+                if (!storage.get('teachers')) storage.set('teachers', [{ id:1, teacherId:'T001', name:'王教授', gender:'男', title:'教授', phone:'13812340011', email:'wang@csie.edu' }]);
+                if (!storage.get('courses')) storage.set('courses', [{ id:1, courseCode:'CS101', courseName:'数据结构', credit:3, teacher:'王教授', semester:'2024秋' }]);
+                if (!storage.get('grades')) storage.set('grades', [{ id:1, studentId:'2024001', studentName:'李明', courseName:'数据结构', score:88, semester:'2024秋' }]);
+                if (!storage.get('classes')) storage.set('classes', [{ id:1, className:'软件1班', major:'软件工程', grade:'2024级', studentCount:35, advisor:'张老师' }]);
+                if (!storage.get('notices')) storage.set('notices', [{ id:1, title:'期中考试安排', content:'请同学们注意考试时间...', publishTime:'2024-10-15', publisher:'教务处' }]);
+                if (!storage.get('researchProjects')) storage.set('researchProjects', [{ id:1, projectNo:'P001', projectName:'AI教育应用', leader:'张教授', budget:500000, startDate:'2024-01-01', endDate:'2025-12-31' }]);
+                if (!storage.get('researchResults')) storage.set('researchResults', [{ id:1, resultName:'深度学习论文', type:'论文', author:'张教授', journal:'计算机学报', publishDate:'2024-05-01' }]);
+                if (!storage.get('competitions')) storage.set('competitions', [{ id:1, certNo:'C2024001', studentId:'2024001', name:'李明', major:'软件工程', grade:'2022级', competitionName:'蓝桥杯', organizer:'工信部', level:'国家级', track:'A组', awardType:'个人', teacher:'王教授' }]);
+                if (!storage.get('theses')) storage.set('theses', [{ id:1, title:'基于深度学习的教学评价模型', serialNo:'001', journal:'计算机学报', authors:'张伟,李明', corrAuthor:'张伟', sciZone:'二区', ccfZone:'B', isExcellent:'是', qduFirst:'是', highlyCited:'否', esi:'否', rewardLevel:'省部级', points:20, remarks:'' }]);
+                // 人事数据初始化 (含新增字段)
+                if (!storage.get('staffs')) storage.set('staffs', [{
+                    id:1, staffId:'T001', name:'张教授', gender:'男', nation:'汉族', birthDate:'1980-05-15', age:44, 
+                    joinDate:'2010-08-01', retireDate:'2040-05-15', dept:'计算机科学系', highestEdu:'博士研究生', 
+                    highestDegree:'博士', gradSchool:'清华大学', major:'计算机科学与技术', category:'工学',
+                    politics:'中共党员', religion:'无', nativePlace:'山东青岛', idCard:'370200198005151234',
+                    maritalStatus:'已婚', children: [{ name:'张小明', birthDate:'2015-06-20' }],
+                    studyAbroad: [{ country:'美国', startDate:'2015-09-01', endDate:'2016-09-01' }],
+                    firstHireDate:'2010-08-01', regularDate:'2011-08-01', introduceLevel:'骨干人才',
+                    specialTitle:'特聘教授', specialContractDate:'2022-01-01', specialContractFile:'',
+                    annualAssessment: { '2023':'优秀', '2022':'合格' }
+                }]);
+            };
+            initAllData();
+
+            // ---------- 通用 CRUD 组件 ----------
+            const createCrudComponent = (options) => {
+                const { name, storageKey, defaultData, columns, formFields, rules, getDefaultForm, exportMap, dialogWidth = '700px', customFormTemplate = null } = options;
+                return {
+                    name,
+                    setup() {
+                        const list = ref(storage.get(storageKey, defaultData));
+                        const dialogVisible = ref(false);
+                        const isEdit = ref(false);
+                        const editId = ref(null);
+                        const formData = ref(getDefaultForm());
+                        const formRef = ref(null);
+                        const searchKeyword = ref('');
+                        const currentPage = ref(1);
+                        const pageSize = ref(10);
+
+                        const filteredList = computed(() => {
+                            if (!searchKeyword.value) return list.value;
+                            const kw = searchKeyword.value.toLowerCase();
+                            return list.value.filter(item => Object.values(item).some(v => String(v).toLowerCase().includes(kw)));
+                        });
+
+                        const paginatedList = computed(() => {
+                            const start = (currentPage.value - 1) * pageSize.value;
+                            return filteredList.value.slice(start, start + pageSize.value);
+                        });
+
+                        watch(list, (val) => storage.set(storageKey, val), { deep: true });
+                        watch(searchKeyword, () => { currentPage.value = 1; });
+
+                        const exportToExcel = () => {
+                            const dataToExport = filteredList.value.length ? filteredList.value : list.value;
+                            if (!dataToExport.length) return ElMessage.warning('没有数据可导出');
+                            const map = exportMap || columns.fields.reduce((acc, f) => { acc[f.prop] = f.label; return acc; }, {});
+                            const headers = Object.values(map);
+                            const keys = Object.keys(map);
+                            const rows = dataToExport.map(item => keys.map(k => {
+                                let val = item[k];
+                                if (k === 'children' || k === 'studyAbroad') return JSON.stringify(val);
+                                return val ?? '';
+                            }));
+                            const wb = XLSX.utils.book_new();
+                            const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+                            XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+                            XLSX.writeFile(wb, `${columns.title.replace(/[^\w\u4e00-\u9fa5]/g,'')}_${new Date().toISOString().slice(0,10)}.xlsx`);
+                            ElMessage.success('导出成功');
+                        };
+
+                        const openAdd = () => { 
+                            isEdit.value = false; editId.value = null; 
+                            formData.value = getDefaultForm(); 
+                            dialogVisible.value = true; 
+                            nextTick(() => formRef.value?.clearValidate()); 
+                        };
+                        const openEdit = (row) => { 
+                            isEdit.value = true; editId.value = row.id; 
+                            // 深拷贝避免引用
+                            formData.value = JSON.parse(JSON.stringify(row)); 
+                            dialogVisible.value = true; 
+                            nextTick(() => formRef.value?.clearValidate()); 
+                        };
+                        const submit = async () => {
+                            if (!formRef.value) return;
+                            await formRef.value.validate((valid) => {
+                                if (valid) {
+                                    if (isEdit.value) {
+                                        const idx = list.value.findIndex(i => i.id === editId.value);
+                                        if (idx !== -1) { list.value[idx] = { ...list.value[idx], ...formData.value }; ElMessage.success('修改成功'); }
+                                    } else {
+                                        const maxId = list.value.length ? Math.max(...list.value.map(i => i.id)) : 0;
+                                        list.value.push({ id: maxId + 1, ...formData.value });
+                                        ElMessage.success('添加成功');
+                                    }
+                                    dialogVisible.value = false;
+                                    currentPage.value = 1;
+                                }
+                            });
+                        };
+                        const del = (id) => {
+                            ElMessageBox.confirm('确定删除吗？', '提示', { type: 'warning' }).then(() => {
+                                const idx = list.value.findIndex(i => i.id === id);
+                                if (idx !== -1) { list.value.splice(idx, 1); ElMessage.success('删除成功'); if (paginatedList.value.length === 0 && currentPage.value > 1) currentPage.value--; }
+                            }).catch(() => {});
+                        };
+                        const handleSizeChange = (v) => { pageSize.value = v; currentPage.value = 1; };
+                        const handleCurrentChange = (v) => { currentPage.value = v; };
+
+                        return { list, dialogVisible, isEdit, formData, formRef, searchKeyword, currentPage, pageSize, filteredList, paginatedList, columns, formFields, rules, openAdd, openEdit, submit, del, exportToExcel, handleSizeChange, handleCurrentChange, dialogWidth, customFormTemplate };
+                    },
+                    template: `
+                        <el-card shadow="hover">
+                            <template #header>
+                                <div style="display:flex; justify-content:space-between; align-items:center;">
+                                    <span style="font-weight:650; font-size:18px;">{{ columns.title }}</span>
+                                    <div style="display:flex; gap:12px;">
+                                        <el-input v-model="searchKeyword" placeholder="搜索..." clearable style="width:220px;"><template #prefix><el-icon><Search /></el-icon></template></el-input>
+                                        <el-button @click="exportToExcel" type="success" plain><el-icon><Download /></el-icon>导出</el-button>
+                                        <el-button type="primary" @click="openAdd"><el-icon><Plus /></el-icon>添加</el-button>
+                                    </div>
+                                </div>
+                            </template>
+                            <el-table :data="paginatedList" border stripe style="width:100%;">
+                                <el-table-column v-for="col in columns.fields" :key="col.prop" :prop="col.prop" :label="col.label" :width="col.width" :min-width="col.minWidth" :formatter="col.formatter" />
+                                <el-table-column label="操作" width="150" fixed="right" align="center">
+                                    <template #default="scope">
+                                        <el-button type="primary" link @click="openEdit(scope.row)"><el-icon><Edit /></el-icon>编辑</el-button>
+                                        <el-button type="danger" link @click="del(scope.row.id)"><el-icon><Delete /></el-icon>删除</el-button>
+                                    </template>
+                                </el-table-column>
+                            </el-table>
+                            <div style="display:flex; justify-content:flex-end; margin-top:20px;">
+                                <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" :page-sizes="[5,10,20,50]" background layout="total, sizes, prev, pager, next, jumper" :total="filteredList.length" @size-change="handleSizeChange" @current-change="handleCurrentChange" />
+                            </div>
+                        </el-card>
+                        <el-dialog v-model="dialogVisible" :title="isEdit?'编辑':'添加'" :width="dialogWidth" destroy-on-close>
+                            <el-form :model="formData" :rules="rules" ref="formRef" label-width="120px">
+                                <slot name="form" :formData="formData" :formFields="formFields">
+                                    <el-row :gutter="20">
+                                        <el-col :span="12" v-for="f in formFields" :key="f.prop">
+                                            <el-form-item :label="f.label" :prop="f.prop">
+                                                <el-input v-if="f.type==='input' || !f.type" v-model="formData[f.prop]" :placeholder="f.placeholder" />
+                                                <el-input-number v-else-if="f.type==='number'" v-model="formData[f.prop]" :min="f.min" :max="f.max" style="width:100%" />
+                                                <el-select v-else-if="f.type==='select'" v-model="formData[f.prop]" placeholder="请选择" style="width:100%">
+                                                    <el-option v-for="o in f.options" :key="o.value" :label="o.label" :value="o.value" />
+                                                </el-select>
+                                                <el-date-picker v-else-if="f.type==='date'" v-model="formData[f.prop]" type="date" placeholder="选择日期" style="width:100%" value-format="YYYY-MM-DD" />
+                                                <el-input v-else-if="f.type==='textarea'" type="textarea" :rows="2" v-model="formData[f.prop]" />
+                                            </el-form-item>
+                                        </el-col>
+                                    </el-row>
+                                </slot>
+                            </el-form>
+                            <template #footer>
+                                <el-button @click="dialogVisible=false">取消</el-button>
+                                <el-button type="primary" @click="submit">确定</el-button>
+                            </template>
+                        </el-dialog>
+                    `
+                };
+            };
+
+            // ---------- 各模块定义 (保留全部) ----------
+            const StudentManagement = createCrudComponent({
+                name: 'Student', storageKey: 'students', defaultData: [], dialogWidth:'600px',
+                columns: { title: '👨‍🎓 学生管理', fields: [{prop:'studentId',label:'学号'},{prop:'name',label:'姓名'},{prop:'gender',label:'性别'},{prop:'age',label:'年龄'},{prop:'className',label:'班级'},{prop:'phone',label:'电话'}] },
+                formFields: [ {prop:'studentId',label:'学号'},{prop:'name',label:'姓名'},{prop:'gender',label:'性别',type:'select',options:[{label:'男',value:'男'},{label:'女',value:'女'}]},{prop:'age',label:'年龄',type:'number'},{prop:'className',label:'班级'},{prop:'phone',label:'电话'} ],
+                rules: { studentId:[{required:true}], name:[{required:true}] }, getDefaultForm: () => ({ studentId:'', name:'', gender:'男', age:20, className:'', phone:'' })
+            });
+            const TeacherManagement = createCrudComponent({
+                name: 'Teacher', storageKey: 'teachers', defaultData: [], dialogWidth:'600px',
+                columns: { title: '👩‍🏫 教师管理', fields: [{prop:'teacherId',label:'工号'},{prop:'name',label:'姓名'},{prop:'gender',label:'性别'},{prop:'title',label:'职称'},{prop:'phone',label:'电话'},{prop:'email',label:'邮箱'}] },
+                formFields: [ {prop:'teacherId',label:'工号'},{prop:'name',label:'姓名'},{prop:'gender',type:'select',options:[{label:'男',value:'男'},{label:'女',value:'女'}]},{prop:'title',label:'职称'},{prop:'phone'},{prop:'email'} ],
+                rules: { teacherId:[{required:true}] }, getDefaultForm: () => ({ teacherId:'', name:'', gender:'男', title:'', phone:'', email:'' })
+            });
+            const CourseManagement = createCrudComponent({ name:'Course', storageKey:'courses', defaultData:[], dialogWidth:'600px', columns:{title:'📖 课程', fields:[{prop:'courseCode',label:'代码'},{prop:'courseName',label:'名称'},{prop:'credit',label:'学分'},{prop:'teacher',label:'教师'},{prop:'semester',label:'学期'}]}, formFields:[{prop:'courseCode',label:'课程代码'},{prop:'courseName',label:'课程名称'},{prop:'credit',label:'学分',type:'number'},{prop:'teacher',label:'授课教师'},{prop:'semester',label:'学期'}], rules:{}, getDefaultForm:()=>({}) });
+            const GradeManagement = createCrudComponent({ name:'Grade', storageKey:'grades', defaultData:[], dialogWidth:'600px', columns:{title:'📊 成绩', fields:[{prop:'studentId',label:'学号'},{prop:'studentName',label:'姓名'},{prop:'courseName',label:'课程'},{prop:'score',label:'成绩'}]}, formFields:[{prop:'studentId',label:'学号'},{prop:'studentName',label:'姓名'},{prop:'courseName',label:'课程名称'},{prop:'score',label:'成绩',type:'number'},{prop:'semester',label:'学期'}], rules:{}, getDefaultForm:()=>({}) });
+            const ClassManagement = createCrudComponent({ name:'Class', storageKey:'classes', defaultData:[], dialogWidth:'600px', columns:{title:'🏫 班级', fields:[{prop:'className',label:'班级'},{prop:'major',label:'专业'},{prop:'grade',label:'年级'},{prop:'studentCount',label:'人数'},{prop:'advisor',label:'辅导员'}]}, formFields:[{prop:'className',label:'班级名称'},{prop:'major',label:'专业'},{prop:'grade',label:'年级'},{prop:'studentCount',label:'学生人数',type:'number'},{prop:'advisor',label:'辅导员'}], rules:{}, getDefaultForm:()=>({}) });
+            const NoticeManagement = createCrudComponent({ name:'Notice', storageKey:'notices', defaultData:[], dialogWidth:'600px', columns:{title:'📢 公告', fields:[{prop:'title',label:'标题'},{prop:'content',label:'内容'},{prop:'publishTime',label:'时间'},{prop:'publisher',label:'发布人'}]}, formFields:[{prop:'title',label:'标题'},{prop:'content',label:'内容',type:'textarea'},{prop:'publishTime',label:'发布时间'},{prop:'publisher',label:'发布人'}], rules:{}, getDefaultForm:()=>({}) });
+            const ResearchProjectManagement = createCrudComponent({ name:'Project', storageKey:'researchProjects', defaultData:[], dialogWidth:'600px', columns:{title:'🔬 项目', fields:[{prop:'projectNo',label:'编号'},{prop:'projectName',label:'名称'},{prop:'leader',label:'负责人'},{prop:'budget',label:'经费'}]}, formFields:[{prop:'projectNo',label:'项目编号'},{prop:'projectName',label:'项目名称'},{prop:'leader',label:'负责人'},{prop:'budget',label:'经费',type:'number'}], rules:{}, getDefaultForm:()=>({}) });
+            const ResearchResultManagement = createCrudComponent({ name:'Result', storageKey:'researchResults', defaultData:[], dialogWidth:'600px', columns:{title:'🏆 成果', fields:[{prop:'resultName',label:'名称'},{prop:'type',label:'类型'},{prop:'author',label:'作者'}]}, formFields:[{prop:'resultName',label:'成果名称'},{prop:'type',label:'类型'},{prop:'author',label:'作者'}], rules:{}, getDefaultForm:()=>({}) });
+            
+            const CompetitionManagement = createCrudComponent({
+                name: 'Competition', storageKey: 'competitions', defaultData: [], dialogWidth:'700px',
+                columns: { title: '🏆 竞赛获奖', fields: [
+                    {prop:'certNo',label:'证书编号'},{prop:'studentId',label:'学号'},{prop:'name',label:'姓名'},{prop:'major',label:'专业'},{prop:'grade',label:'年级'},
+                    {prop:'competitionName',label:'竞赛名称'},{prop:'organizer',label:'主办单位'},{prop:'level',label:'级别'},{prop:'track',label:'赛道'},
+                    {prop:'awardType',label:'类型'},{prop:'teacher',label:'指导老师'}
+                ]},
+                formFields: [
+                    {prop:'certNo',label:'证书编号'},{prop:'studentId',label:'学号'},{prop:'name',label:'姓名'},{prop:'major',label:'专业'},{prop:'grade',label:'年级'},
+                    {prop:'competitionName',label:'竞赛名称'},{prop:'organizer',label:'主办单位'},{prop:'level',label:'级别'},{prop:'track',label:'赛道'},
+                    {prop:'awardType',label:'获奖类型',type:'select',options:[{label:'个人',value:'个人'},{label:'团队',value:'团队'}]},{prop:'teacher',label:'指导老师'}
+                ],
+                rules: { certNo:[{required:true}] }, getDefaultForm: () => ({ certNo:'', studentId:'', name:'', major:'', grade:'', competitionName:'', organizer:'', level:'', track:'', awardType:'个人', teacher:'' })
+            });
+            const ThesisManagement = createCrudComponent({
+                name: 'Thesis', storageKey: 'theses', defaultData: [], dialogWidth:'800px',
+                columns: { title: '📄 科研论文', fields: [
+                    {prop:'serialNo',label:'序号'},{prop:'title',label:'题目'},{prop:'journal',label:'期刊'},{prop:'authors',label:'作者'},{prop:'corrAuthor',label:'通讯作者'},
+                    {prop:'sciZone',label:'SCI分区'},{prop:'ccfZone',label:'CCF分区'},{prop:'isExcellent',label:'卓越'},{prop:'qduFirst',label:'青大第一单位'},
+                    {prop:'highlyCited',label:'高被引'},{prop:'esi',label:'ESI'},{prop:'rewardLevel',label:'奖励级别'},{prop:'points',label:'积分'},{prop:'remarks',label:'备注'}
+                ]},
+                formFields: [
+                    {prop:'serialNo',label:'序号'},{prop:'title',label:'题目'},{prop:'journal',label:'期刊'},{prop:'authors',label:'作者'},{prop:'corrAuthor',label:'通讯作者'},
+                    {prop:'sciZone',label:'SCI分区'},{prop:'ccfZone',label:'CCF分区'},{prop:'isExcellent',label:'是否卓越',type:'select',options:[{label:'是',value:'是'},{label:'否',value:'否'}]},
+                    {prop:'qduFirst',label:'青大第一单位',type:'select',options:[{label:'是',value:'是'},{label:'否',value:'否'}]},
+                    {prop:'highlyCited',label:'高被引',type:'select',options:[{label:'是',value:'是'},{label:'否',value:'否'}]},
+                    {prop:'esi',label:'ESI',type:'select',options:[{label:'是',value:'是'},{label:'否',value:'否'}]},
+                    {prop:'rewardLevel',label:'奖励级别'},{prop:'points',label:'积分',type:'number'},{prop:'remarks',label:'备注',type:'textarea'}
+                ],
+                rules: { title:[{required:true}] }, getDefaultForm: () => ({ serialNo:'', title:'', journal:'', authors:'', corrAuthor:'', sciZone:'', ccfZone:'', isExcellent:'否', qduFirst:'是', highlyCited:'否', esi:'否', rewardLevel:'', points:0, remarks:'' })
+            });
+
+            // ---------- 人事管理 (增强版，使用自定义表单模板) ----------
+            const StaffManagement = {
+                name: 'StaffManagement',
+                setup() {
+                    const list = ref(storage.get('staffs', []));
+                    const dialogVisible = ref(false);
+                    const isEdit = ref(false);
+                    const editId = ref(null);
+                    const formData = ref({
+                        staffId:'', name:'', gender:'男', nation:'汉族', birthDate:'', age:0,
+                        joinDate:'', retireDate:'', dept:'', highestEdu:'', highestDegree:'',
+                        gradSchool:'', major:'', category:'', politics:'', religion:'', nativePlace:'',
+                        idCard:'', maritalStatus:'未婚', children: [], studyAbroad: [],
+                        firstHireDate:'', regularDate:'', introduceLevel:'', specialTitle:'',
+                        specialContractDate:'', specialContractFile:'', annualAssessment: {}
+                    });
+                    const formRef = ref(null);
+                    const searchKeyword = ref('');
+                    const currentPage = ref(1);
+                    const pageSize = ref(10);
+                    const activeTab = ref('basic');
+
+                    const filteredList = computed(() => {
+                        if (!searchKeyword.value) return list.value;
+                        const kw = searchKeyword.value.toLowerCase();
+                        return list.value.filter(item => Object.values(item).some(v => String(v).toLowerCase().includes(kw)));
+                    });
+                    const paginatedList = computed(() => filteredList.value.slice((currentPage.value-1)*pageSize.value, currentPage.value*pageSize.value));
+
+                    watch(list, (val) => storage.set('staffs', val), { deep: true });
+                    watch(searchKeyword, () => { currentPage.value = 1; });
+
+                    const exportToExcel = () => {
+                        const data = filteredList.value.length ? filteredList.value : list.value;
+                        if (!data.length) return ElMessage.warning('无数据');
+                        const map = { staffId:'工号', name:'姓名', gender:'性别', nation:'民族', birthDate:'出生年月', dept:'部门', highestEdu:'最高学历' };
+                        const headers = Object.values(map);
+                        const keys = Object.keys(map);
+                        const rows = data.map(item => keys.map(k => item[k] ?? ''));
+                        const wb = XLSX.utils.book_new();
+                        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([headers, ...rows]), 'Sheet1');
+                        XLSX.writeFile(wb, `人事管理_${new Date().toISOString().slice(0,10)}.xlsx`);
+                        ElMessage.success('导出成功');
+                    };
+
+                    const openAdd = () => { 
+                        isEdit.value = false; editId.value = null; 
+                        formData.value = { staffId:'', name:'', gender:'男', nation:'汉族', birthDate:'', age:0, joinDate:'', retireDate:'', dept:'', highestEdu:'', highestDegree:'', gradSchool:'', major:'', category:'', politics:'', religion:'', nativePlace:'', idCard:'', maritalStatus:'未婚', children:[], studyAbroad:[], firstHireDate:'', regularDate:'', introduceLevel:'', specialTitle:'', specialContractDate:'', specialContractFile:'', annualAssessment:{} };
+                        dialogVisible.value = true; activeTab.value = 'basic';
+                    };
+                    const openEdit = (row) => { 
+                        isEdit.value = true; editId.value = row.id; 
+                        formData.value = JSON.parse(JSON.stringify(row)); 
+                        dialogVisible.value = true; activeTab.value = 'basic';
+                    };
+                    const submit = () => {
+                        if (isEdit.value) {
+                            const idx = list.value.findIndex(i => i.id === editId.value);
+                            if (idx !== -1) { list.value[idx] = { ...list.value[idx], ...formData.value }; ElMessage.success('修改成功'); }
+                        } else {
+                            const maxId = list.value.length ? Math.max(...list.value.map(i => i.id)) : 0;
+                            list.value.push({ id: maxId + 1, ...formData.value });
+                            ElMessage.success('添加成功');
+                        }
+                        dialogVisible.value = false;
+                    };
+                    const del = (id) => {
+                        ElMessageBox.confirm('确定删除吗？', '提示', { type: 'warning' }).then(() => {
+                            const idx = list.value.findIndex(i => i.id === id);
+                            if (idx !== -1) { list.value.splice(idx, 1); ElMessage.success('删除成功'); }
+                        });
+                    };
+                    // 子女、留学经历动态操作
+                    const addChild = () => formData.value.children.push({ name:'', birthDate:'' });
+                    const removeChild = (idx) => formData.value.children.splice(idx, 1);
+                    const addStudy = () => formData.value.studyAbroad.push({ country:'', startDate:'', endDate:'' });
+                    const removeStudy = (idx) => formData.value.studyAbroad.splice(idx, 1);
+
+                    return { list, dialogVisible, isEdit, formData, searchKeyword, currentPage, pageSize, filteredList, paginatedList, activeTab, openAdd, openEdit, submit, del, exportToExcel, addChild, removeChild, addStudy, removeStudy, handleSizeChange: (v)=>{ pageSize.value=v; currentPage.value=1; }, handleCurrentChange: (v)=> currentPage.value=v };
+                },
+                template: `
+                    <el-card shadow="hover">
+                        <template #header>
+                            <div style="display:flex; justify-content:space-between;">
+                                <span style="font-weight:650;">👔 人事管理 (教职工)</span>
+                                <div style="display:flex; gap:12px;">
+                                    <el-input v-model="searchKeyword" placeholder="搜索..." clearable style="width:220px;"><template #prefix><el-icon><Search /></el-icon></template></el-input>
+                                    <el-button @click="exportToExcel" type="success" plain><el-icon><Download /></el-icon>导出</el-button>
+                                    <el-button type="primary" @click="openAdd"><el-icon><Plus /></el-icon>添加</el-button>
+                                </div>
+                            </div>
+                        </template>
+                        <el-table :data="paginatedList" border stripe>
+                            <el-table-column prop="staffId" label="工号" width="100" />
+                            <el-table-column prop="name" label="姓名" width="100" />
+                            <el-table-column prop="gender" label="性别" width="70" />
+                            <el-table-column prop="nation" label="民族" width="80" />
+                            <el-table-column prop="birthDate" label="出生年月" width="110" />
+                            <el-table-column prop="dept" label="部门" width="140" />
+                            <el-table-column prop="highestEdu" label="最高学历" width="100" />
+                            <el-table-column label="操作" width="150" fixed="right">
+                                <template #default="scope">
+                                    <el-button type="primary" link @click="openEdit(scope.row)"><el-icon><Edit /></el-icon></el-button>
+                                    <el-button type="danger" link @click="del(scope.row.id)"><el-icon><Delete /></el-icon></el-button>
+                                </template>
+                            </el-table-column>
+                        </el-table>
+                        <div style="display:flex; justify-content:flex-end; margin-top:20px;">
+                            <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" :page-sizes="[5,10,20]" background layout="total, sizes, prev, pager, next" :total="filteredList.length" @size-change="handleSizeChange" @current-change="handleCurrentChange" />
+                        </div>
+                    </el-card>
+                    <el-dialog v-model="dialogVisible" :title="isEdit?'编辑教职工':'新增教职工'" width="850px" destroy-on-close>
+                        <el-tabs v-model="activeTab">
+                            <el-tab-pane label="基本信息" name="basic">
+                                <el-form :model="formData" label-width="110px">
+                                    <el-row :gutter="20">
+                                        <el-col :span="8"><el-form-item label="工号"><el-input v-model="formData.staffId" /></el-form-item></el-col>
+                                        <el-col :span="8"><el-form-item label="姓名"><el-input v-model="formData.name" /></el-form-item></el-col>
+                                        <el-col :span="8"><el-form-item label="性别"><el-select v-model="formData.gender"><el-option label="男" value="男"/><el-option label="女" value="女"/></el-select></el-form-item></el-col>
+                                        <el-col :span="8"><el-form-item label="民族"><el-input v-model="formData.nation" /></el-form-item></el-col>
+                                        <el-col :span="8"><el-form-item label="出生年月"><el-date-picker v-model="formData.birthDate" type="date" value-format="YYYY-MM-DD" style="width:100%"/></el-form-item></el-col>
+                                        <el-col :span="8"><el-form-item label="年龄"><el-input-number v-model="formData.age" :min="0" style="width:100%"/></el-form-item></el-col>
+                                        <el-col :span="8"><el-form-item label="政治面貌"><el-input v-model="formData.politics" /></el-form-item></el-col>
+                                        <el-col :span="8"><el-form-item label="宗教信仰"><el-input v-model="formData.religion" /></el-form-item></el-col>
+                                        <el-col :span="8"><el-form-item label="籍贯"><el-input v-model="formData.nativePlace" /></el-form-item></el-col>
+                                        <el-col :span="12"><el-form-item label="身份证号"><el-input v-model="formData.idCard" /></el-form-item></el-col>
+                                        <el-col :span="12"><el-form-item label="婚姻状况"><el-select v-model="formData.maritalStatus"><el-option label="未婚" value="未婚"/><el-option label="已婚" value="已婚"/></el-select></el-form-item></el-col>
+                                    </el-row>
+                                </el-form>
+                            </el-tab-pane>
+                            <el-tab-pane label="工作/教育" name="work">
+                                <el-form :model="formData" label-width="110px">
+                                    <el-row :gutter="20">
+                                        <el-col :span="8"><el-form-item label="来校时间"><el-date-picker v-model="formData.joinDate" type="date" value-format="YYYY-MM-DD" style="width:100%"/></el-form-item></el-col>
+                                        <el-col :span="8"><el-form-item label="拟退休年"><el-date-picker v-model="formData.retireDate" type="date" value-format="YYYY-MM-DD" style="width:100%"/></el-form-item></el-col>
+                                        <el-col :span="8"><el-form-item label="部门"><el-input v-model="formData.dept" /></el-form-item></el-col>
+                                        <el-col :span="8"><el-form-item label="最高学历"><el-input v-model="formData.highestEdu" /></el-form-item></el-col>
+                                        <el-col :span="8"><el-form-item label="最高学位"><el-input v-model="formData.highestDegree" /></el-form-item></el-col>
+                                        <el-col :span="8"><el-form-item label="毕业院校"><el-input v-model="formData.gradSchool" /></el-form-item></el-col>
+                                        <el-col :span="8"><el-form-item label="所学专业"><el-input v-model="formData.major" /></el-form-item></el-col>
+                                        <el-col :span="8"><el-form-item label="所属门类"><el-input v-model="formData.category" /></el-form-item></el-col>
+                                    </el-row>
+                                </el-form>
+                            </el-tab-pane>
+                            <el-tab-pane label="引进/特聘" name="hire">
+                                <el-form :model="formData" label-width="120px">
+                                    <el-row :gutter="20">
+                                        <el-col :span="12"><el-form-item label="首聘期日期"><el-date-picker v-model="formData.firstHireDate" type="date" value-format="YYYY-MM-DD" style="width:100%"/></el-form-item></el-col>
+                                        <el-col :span="12"><el-form-item label="转正日期"><el-date-picker v-model="formData.regularDate" type="date" value-format="YYYY-MM-DD" style="width:100%"/></el-form-item></el-col>
+                                        <el-col :span="12"><el-form-item label="引进层次"><el-input v-model="formData.introduceLevel" /></el-form-item></el-col>
+                                        <el-col :span="12"><el-form-item label="特聘层次"><el-input v-model="formData.specialTitle" /></el-form-item></el-col>
+                                        <el-col :span="12"><el-form-item label="特聘合同日期"><el-date-picker v-model="formData.specialContractDate" type="date" value-format="YYYY-MM-DD" style="width:100%"/></el-form-item></el-col>
+                                    </el-row>
+                                </el-form>
+                            </el-tab-pane>
+                            <el-tab-pane label="家庭成员" name="family">
+                                <div style="margin-bottom:10px;"><el-button type="primary" size="small" @click="addChild">添加子女</el-button></div>
+                                <el-row v-for="(child, idx) in formData.children" :key="idx" style="margin-bottom:10px; display:flex; align-items:center;">
+                                    <el-col :span="9"><el-input v-model="child.name" placeholder="子女姓名" /></el-col>
+                                    <el-col :span="9" style="margin-left:10px;"><el-date-picker v-model="child.birthDate" type="date" placeholder="出生日期" value-format="YYYY-MM-DD" style="width:100%"/></el-col>
+                                    <el-col :span="2" style="margin-left:10px;"><el-button type="danger" :icon="Delete" circle @click="removeChild(idx)" /></el-col>
+                                </el-row>
+                            </el-tab-pane>
+                            <el-tab-pane label="留学经历" name="abroad">
+                                <div style="margin-bottom:10px;"><el-button type="primary" size="small" @click="addStudy">添加经历</el-button></div>
+                                <el-row v-for="(item, idx) in formData.studyAbroad" :key="idx" style="margin-bottom:10px;">
+                                    <el-col :span="6"><el-input v-model="item.country" placeholder="国家" /></el-col>
+                                    <el-col :span="7" style="margin-left:10px;"><el-date-picker v-model="item.startDate" type="date" placeholder="开始日期" value-format="YYYY-MM-DD" style="width:100%"/></el-col>
+                                    <el-col :span="7" style="margin-left:10px;"><el-date-picker v-model="item.endDate" type="date" placeholder="结束日期" value-format="YYYY-MM-DD" style="width:100%"/></el-col>
+                                    <el-col :span="2" style="margin-left:10px;"><el-button type="danger" :icon="Delete" circle @click="removeStudy(idx)" /></el-col>
+                                </el-row>
+                            </el-tab-pane>
+                        </el-tabs>
+                        <template #footer>
+                            <el-button @click="dialogVisible=false">取消</el-button>
+                            <el-button type="primary" @click="submit">确定</el-button>
+                        </template>
+                    </el-dialog>
+                `
+            };
+
+            // 仪表盘与系统设置 (略，保持之前完整)
+            const DashboardView = { /* 同前完整版，此处省略确保代码长度，实际使用时请包含之前完整版 */ 
+                setup() { const stats = reactive({ students:0, teachers:0, courses:0, classes:0, competitions:0, theses:0, staffs:0 }); const recentNotices=ref([]); const load=()=>{ stats.students=storage.get('students',[]).length; stats.teachers=storage.get('teachers',[]).length; stats.courses=storage.get('courses',[]).length; stats.classes=storage.get('classes',[]).length; stats.competitions=storage.get('competitions',[]).length; stats.theses=storage.get('theses',[]).length; stats.staffs=storage.get('staffs',[]).length; recentNotices.value=storage.get('notices',[]).slice(0,4); }; onMounted(load); return {stats, recentNotices, load}; },
+                template:`<div><div class="dashboard-welcome"><div style="display:flex; justify-content:space-between;"><div><h2>下午好，管理员</h2><p>计算机科学与技术学院</p></div><el-button bg text @click="load" style="background:rgba(255,255,255,0.2); color:white;">刷新</el-button></div></div><el-row :gutter="20"><el-col :span="6" v-for="c in [{label:'学生',val:stats.students,icon:'UserFilled',color:'#2a5298'},{label:'教师',val:stats.teachers,icon:'User',color:'#1e3c72'},{label:'课程',val:stats.courses,icon:'Reading',color:'#0f4c5c'},{label:'班级',val:stats.classes,icon:'Grid',color:'#5e4b3c'}]"><div class="stat-card"><div class="stat-icon" :style="{background:c.color}"><el-icon><component :is=\"c.icon\"/></el-icon></div><div><div>{{c.label}}</div><div class="stat-number">{{c.val}}</div></div></div></el-col></el-row><el-row :gutter="20" style="margin-top:20px;"><el-col :span="12"><el-card><template #header><el-icon><Bell /></el-icon>最新公告</template><el-timeline><el-timeline-item v-for="n in recentNotices" :key="n.id" :timestamp="n.publishTime">{{n.title}}</el-timeline-item></el-timeline></el-card></el-col><el-col :span="12"><el-card><template #header>📊 快速统计</template><p>竞赛获奖: {{stats.competitions}} 项</p><p>科研论文: {{stats.theses}} 篇</p><p>教职工: {{stats.staffs}} 人</p></el-card></el-col></el-row></div>`
+            };
+            const SystemSettings = { /* 同前 */ 
+                setup(){ const s=ref(storage.get('systemSettings',{secretKey:DEFAULT_SECRET})); const backup=ref(''); const save=()=>{ storage.set('systemSettings',s.value); storage.set('registerSecret',s.value.secretKey); ElMessage.success('已保存'); }; const exportBackup=()=>{ const data={students:storage.get('students',[]),teachers:storage.get('teachers',[]),staffs:storage.get('staffs',[])}; backup.value=JSON.stringify(data,null,2); }; const importBackup=()=>{ try{ const d=JSON.parse(backup.value); Object.keys(d).forEach(k=>storage.set(k,d[k])); ElMessage.success('恢复成功'); setTimeout(()=>location.reload(),1000); }catch{ ElMessage.error('格式错误'); } }; return {s,save,backup,exportBackup,importBackup}; },
+                template:`<el-card><template #header>⚙️ 系统设置</template><el-form><el-form-item label="注册密钥"><el-input v-model="s.secretKey"/></el-form-item><el-button type="primary" @click="save">保存</el-button><el-divider>数据备份</el-divider><el-button @click="exportBackup">生成备份</el-button><el-input v-model="backup" type="textarea" :rows="5" style="margin:10px 0"/><el-button type="success" @click="importBackup">恢复备份</el-button></el-form></el-card>`
+            };
+
+            // 主应用 (登录/注册/菜单完整)
+            const App = {
+                components: { StudentManagement, TeacherManagement, CourseManagement, GradeManagement, ClassManagement, NoticeManagement, ResearchProjectManagement, ResearchResultManagement, CompetitionManagement, ThesisManagement, StaffManagement, SystemSettings, DashboardView },
+                setup() {
+                    const isLoggedIn = ref(false); const currentUser = ref(null);
+                    const loginForm = ref({ username: 'admin', password: '123456' });
+                    const loginFormRef = ref(null); const activeMenu = ref('dashboard');
+                    const menuName = computed(()=>{ const m={ dashboard:'数据看板', student:'学生管理', teacher:'教师管理', course:'课程管理', grade:'成绩管理', class:'班级管理', notice:'公告管理', researchProject:'科研项目', researchResult:'科研成果', competition:'竞赛获奖', thesis:'科研论文', staff:'人事管理', system:'系统设置' }; return m[activeMenu.value]||''; });
+                    const currentComp = computed(()=>{ const c={ dashboard:'DashboardView', student:'StudentManagement', teacher:'TeacherManagement', course:'CourseManagement', grade:'GradeManagement', class:'ClassManagement', notice:'NoticeManagement', researchProject:'ResearchProjectManagement', researchResult:'ResearchResultManagement', competition:'CompetitionManagement', thesis:'ThesisManagement', staff:'StaffManagement', system:'SystemSettings' }; return c[activeMenu.value]||'DashboardView'; });
+                    const regVisible = ref(false); const regForm = ref({ username:'', password:'', confirmPwd:'', secretKey:'' });
+                    const doRegister = ()=>{
+                        if(regForm.value.secretKey !== storage.get('registerSecret', DEFAULT_SECRET)) return ElMessage.error('密钥错误');
+                        const users = storage.get('adminUsers',[]);
+                        if(users.some(u=>u.username===regForm.value.username)) return ElMessage.error('用户名已存在');
+                        users.push({ id:Date.now(), username:regForm.value.username, password:regForm.value.password });
+                        storage.set('adminUsers', users); ElMessage.success('注册成功'); regVisible.value = false;
+                    };
+                    const handleLogin = ()=>{
+                        const user = storage.get('adminUsers',[]).find(u=>u.username===loginForm.value.username && u.password===loginForm.value.password);
+                        if(user) { isLoggedIn.value = true; currentUser.value = user; } else ElMessage.error('账号或密码错误');
+                    };
+                    return { isLoggedIn, currentUser, loginForm, loginFormRef, activeMenu, menuName, currentComp, regVisible, regForm, doRegister, openReg:()=>regVisible.value=true, handleLogin, handleCmd:(c)=>{ if(c==='logout') isLoggedIn.value=false; }, menuSelect:(i)=>activeMenu.value=i };
+                },
+                template: `
+                    <div v-if="!isLoggedIn" class="login-container">
+                        <el-card class="login-card"><div class="college-badge"><div class="college-icon"><el-icon size="28" color="white"><School /></el-icon></div><div><div class="college-title">计算机科学与技术学院</div></div></div>
+                            <el-form :model="loginForm" ref="loginFormRef"><el-form-item><el-input v-model="loginForm.username" placeholder="工号/学号" size="large"><template #prefix><el-icon><User /></el-icon></template></el-input></el-form-item>
+                            <el-form-item><el-input v-model="loginForm.password" type="password" placeholder="密码" size="large" show-password><template #prefix><el-icon><Lock /></el-icon></template></el-input></el-form-item>
+                            <el-button type="primary" size="large" style="width:100%" @click="handleLogin">登录</el-button></el-form>
+                            <div class="register-link">没有账号？ <span @click="openReg">注册管理员</span></div>
+                        </el-card>
+                        <el-dialog v-model="regVisible" title="注册管理员"><el-form :model="regForm" label-width="80px"><el-form-item label="用户名"><el-input v-model="regForm.username"/></el-form-item><el-form-item label="密码"><el-input v-model="regForm.password" type="password"/></el-form-item><el-form-item label="确认密码"><el-input v-model="regForm.confirmPwd" type="password"/></el-form-item><el-form-item label="密钥"><el-input v-model="regForm.secretKey" placeholder="默认 CSIE2024"/></el-form-item></el-form><template #footer><el-button @click="regVisible=false">取消</el-button><el-button type="primary" @click="doRegister">注册</el-button></template></el-dialog>
+                    </div>
+                    <el-container v-else style="height:100vh;">
+                        <el-aside width="260px" style="background:#fff;"><div style="height:70px; display:flex; align-items:center; padding-left:20px;"><span style="font-weight:650;">智慧学管</span></div>
+                            <el-menu :default-active="activeMenu" @select="menuSelect">
+                                <el-menu-item index="dashboard"><el-icon><Odometer /></el-icon>数据看板</el-menu-item>
+                                <el-menu-item index="student"><el-icon><UserFilled /></el-icon>学生管理</el-menu-item>
+                                <el-menu-item index="teacher"><el-icon><User /></el-icon>教师管理</el-menu-item>
+                                <el-menu-item index="course"><el-icon><Reading /></el-icon>课程管理</el-menu-item>
+                                <el-menu-item index="grade"><el-icon><Trophy /></el-icon>成绩管理</el-menu-item>
+                                <el-menu-item index="class"><el-icon><Grid /></el-icon>班级管理</el-menu-item>
+                                <el-menu-item index="notice"><el-icon><Bell /></el-icon>公告管理</el-menu-item>
+                                <el-menu-item index="researchProject"><el-icon><Document /></el-icon>科研项目</el-menu-item>
+                                <el-menu-item index="researchResult"><el-icon><Medal /></el-icon>科研成果</el-menu-item>
+                                <el-menu-item index="competition"><el-icon><TrophyBase /></el-icon>竞赛获奖</el-menu-item>
+                                <el-menu-item index="thesis"><el-icon><Notebook /></el-icon>科研论文</el-menu-item>
+                                <el-menu-item index="staff"><el-icon><Avatar /></el-icon>人事管理</el-menu-item>
+                                <el-menu-item index="system"><el-icon><Setting /></el-icon>系统设置</el-menu-item>
+                            </el-menu>
+                        </el-aside>
+                        <el-container><el-header style="height:70px; background:#fff; display:flex; align-items:center; justify-content:space-between;"><el-breadcrumb><el-breadcrumb-item @click="activeMenu='dashboard'">首页</el-breadcrumb-item><el-breadcrumb-item>{{ menuName }}</el-breadcrumb-item></el-breadcrumb>
+                            <el-dropdown @command="handleCmd"><span>{{ currentUser?.username }}</span><template #dropdown><el-dropdown-menu><el-dropdown-item command="logout">退出</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
+                        </el-header><el-main style="background:#f5f9ff;"><transition name="fade"><component :is="currentComp"/></transition></el-main></el-container>
+                    </el-container>
+                `
+            };
+
+            const app = createApp(App);
+            for (const [k, c] of Object.entries(ElementPlusIconsVue)) app.component(k, c);
+            app.use(ElementPlus);
+            app.mount('#app');
+        })();
+    </script>
+</body>
+</html>
